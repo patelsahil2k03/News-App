@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">NewsFresh</string>
+    <string name="error_missing_api_key">Missing NEWS_API_KEY. Please define it in your local.properties file.</string>
+    <string name="error_fetch_news">Unable to fetch latest headlines. Please try again.</string>
+    <string name="error_fetch_news_toast">News fetch failed: %1$s</string>
+    <string name="error_no_articles">No articles available right now.</string>
 </resources>

@@ -1,103 +1,120 @@
 package com.example.newsfresh
 
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.view.View
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.android.volley.Request
-import com.android.volley.Response
 import com.android.volley.toolbox.JsonObjectRequest
-import kotlinx.android.synthetic.main.activity_main.*
-import org.json.JSONObject
 
 class MainActivity : AppCompatActivity(), NewsItemClicked {
 
-    private lateinit var mAdapter: NewsListAdapter
+    private lateinit var newsAdapter: NewsListAdapter
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var emptyStateText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        recyclerView = findViewById(R.id.recyclerView)
+        progressBar = findViewById(R.id.progressBar)
+        emptyStateText = findViewById(R.id.emptyStateText)
+
         recyclerView.layoutManager = LinearLayoutManager(this)
+        newsAdapter = NewsListAdapter(this)
+        recyclerView.adapter = newsAdapter
+
         fetchData()
-        mAdapter = NewsListAdapter(this)
-        recyclerView.adapter = mAdapter
     }
 
-
     private fun fetchData() {
-        //volly library
-        val url = "http://newsapi.org/v2/top-headlines?country=in&apiKey=3f6b638d893c4be0a493bbb29bb16433"
-        //making a request
-        val jsonObjectRequest = object: JsonObjectRequest(
+        showLoading(true)
+
+        val apiKey = BuildConfig.NEWS_API_KEY
+        if (apiKey.isBlank()) {
+            showLoading(false)
+            emptyStateText.visibility = View.VISIBLE
+            emptyStateText.text = getString(R.string.error_missing_api_key)
+            return
+        }
+
+        val url =
+            "https://newsapi.org/v2/top-headlines?country=in&apiKey=$apiKey"
+
+        val request = object : JsonObjectRequest(
             Request.Method.GET,
             url,
             null,
-            Response.Listener {
-                val newsJsonArray = it.getJSONArray("articles")
+            { response ->
+                val newsJsonArray = response.optJSONArray("articles")
                 val newsArray = ArrayList<News>()
-                for(i in 0 until newsJsonArray.length()) {
-                    val newsJsonObject = newsJsonArray.getJSONObject(i)
-                    val news = News(
-                        newsJsonObject.getString("title"),
-                        newsJsonObject.getString("author"),
-                        newsJsonObject.getString("url"),
-                        newsJsonObject.getString("urlToImage")
-                    )
-                    newsArray.add(news)
+
+                if (newsJsonArray != null) {
+                    for (i in 0 until newsJsonArray.length()) {
+                        val newsJsonObject = newsJsonArray.optJSONObject(i) ?: continue
+
+                        val title = newsJsonObject.optString("title", "Untitled")
+                        val author = newsJsonObject.optString("author", "Unknown author")
+                        val articleUrl = newsJsonObject.optString("url", "")
+                        val imageUrl = newsJsonObject.optString("urlToImage", "")
+
+                        if (articleUrl.isNotBlank()) {
+                            newsArray.add(
+                                News(
+                                    title = title,
+                                    author = author,
+                                    url = articleUrl,
+                                    imageUrl = imageUrl
+                                )
+                            )
+                        }
+                    }
                 }
 
-                mAdapter.updateNews(newsArray)
+                showLoading(false)
+                newsAdapter.updateNews(newsArray)
+                emptyStateText.visibility = if (newsArray.isEmpty()) View.VISIBLE else View.GONE
+                if (newsArray.isEmpty()) {
+                    emptyStateText.text = getString(R.string.error_no_articles)
+                }
             },
-            Response.ErrorListener {
+            { error ->
+                showLoading(false)
+                emptyStateText.visibility = View.VISIBLE
+                emptyStateText.text = getString(R.string.error_fetch_news)
+                Toast.makeText(
+                    this,
+                    getString(R.string.error_fetch_news_toast, error.localizedMessage ?: "unknown"),
+                    Toast.LENGTH_LONG
+                ).show()
             }
-
         ) {
             override fun getHeaders(): MutableMap<String, String> {
-                val headers = HashMap<String, String>()
-                headers["User-Agent"] = "Mozilla/5.0"
-                return headers
+                return hashMapOf("User-Agent" to "NewsFresh-Android/1.0")
             }
         }
 
-        MySingleton.getInstance(this).addToRequestQueue(jsonObjectRequest)
+        MySingleton.getInstance(this).addToRequestQueue(request)
     }
 
-
-//    private fun fetchData() {
-//        val url = "https://newsapi.org/v2/top-headlines?country=in&category=science&piKey=3f6b638d893c4be0a493bbb29bb16433"
-//        val jsonObjectRequest = JsonObjectRequest(
-//            Request.Method.GET,
-//            url,
-//            null,
-//            Response.Listener {
-//                val newsJsonArray = it.getJSONArray("articles")
-//                val newsArray = ArrayList<News>()
-//                for(i in 0 until newsJsonArray.length()) {
-//                    val newsJsonObject = newsJsonArray.getJSONObject(i)
-//                    val news = News(
-//                        newsJsonObject.getString("title"),
-//                        newsJsonObject.getString("author"),
-//                        newsJsonObject.getString("url"),
-//                        newsJsonObject.getString("urlToImage")
-//                    )
-//                    newsArray.add(news)
-//                }
-//
-//                mAdapter.updateNews(newsArray)
-//            },
-//            Response.ErrorListener {
-//
-//            }
-//        )
-//        MySingleton.getInstance(this).addToRequestQueue(jsonObjectRequest)
-//    }
+    private fun showLoading(isLoading: Boolean) {
+        progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+        recyclerView.visibility = if (isLoading) View.GONE else View.VISIBLE
+        if (isLoading) {
+            emptyStateText.visibility = View.GONE
+        }
+    }
 
     override fun onItemClicked(item: News) {
-        val builder =  CustomTabsIntent.Builder()
-        val customTabsIntent = builder.build()
+        val customTabsIntent = CustomTabsIntent.Builder().build()
         customTabsIntent.launchUrl(this, Uri.parse(item.url))
     }
 }
